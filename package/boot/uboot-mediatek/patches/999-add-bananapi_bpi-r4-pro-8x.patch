@@ -693,7 +693,7 @@
 +bootconf_base=config-mt7988a-bananapi-bpi-r4-pro-8x
 +bootconf_emmc=mt7988a-bananapi-bpi-r4-pro-8x-emmc
 +bootconf_sd=mt7988a-bananapi-bpi-r4-pro-8x-sd
-+bootconf_extra=
++bootconf_extra=mt7988a-bananapi-bpi-r4-pro-8x-wifi-mt7996a
 +bootdelay=0
 +bootfile=openwrt-mediatek-filogic-bananapi_bpi-r4-pro-8x-initramfs-recovery.itb
 +bootfile_bl2=openwrt-mediatek-filogic-bananapi_bpi-r4-pro-8x-emmc-preloader.bin
@@ -754,7 +754,7 @@
 +bootconf_base=config-mt7988a-bananapi-bpi-r4-pro-8x
 +bootconf_emmc=mt7988a-bananapi-bpi-r4-pro-8x-emmc
 +bootconf_sd=mt7988a-bananapi-bpi-r4-pro-8x-sd
-+bootconf_extra=
++bootconf_extra=mt7988a-bananapi-bpi-r4-pro-8x-wifi-mt7996a
 +bootdelay=0
 +bootfile=openwrt-mediatek-filogic-bananapi_bpi-r4-pro-8x-initramfs-recovery.itb
 +bootfile_upg=openwrt-mediatek-filogic-bananapi_bpi-r4-pro-8x-squashfs-sysupgrade.itb
@@ -823,7 +823,7 @@
 +bootconf_base=config-mt7988a-bananapi-bpi-r4-pro-8x
 +bootconf_emmc=mt7988a-bananapi-bpi-r4-pro-8x-emmc
 +bootconf_sd=mt7988a-bananapi-bpi-r4-pro-8x-sd
-+bootconf_extra=
++bootconf_extra=mt7988a-bananapi-bpi-r4-pro-8x-wifi-mt7996a
 +bootcmd=if pstore check ; then run boot_recovery ; else run boot_ubi ; fi
 +bootdelay=0
 +bootfile=openwrt-mediatek-filogic-bananapi_bpi-r4-pro-8x-initramfs-recovery.itb
