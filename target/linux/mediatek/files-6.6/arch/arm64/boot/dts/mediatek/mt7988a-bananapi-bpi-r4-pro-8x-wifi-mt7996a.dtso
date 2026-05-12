@@ -26,7 +26,7 @@
 		target = <&imux3_wifi>;
 		__overlay__ {
 			// 5G WIFI MAC Address EEPROM
-			wifi_eeprom@51 {
+			eeprom@51 {
 				compatible = "atmel,24c02";
 				reg = <0x51>;
 				address-bits = <8>;
@@ -45,7 +45,7 @@
 			};
 
 			// 6G WIFI MAC Address EEPROM
-			wifi_eeprom@52 {
+			eeprom@52 {
 				compatible = "atmel,24c02";
 				reg = <0x52>;
 				address-bits = <8>;

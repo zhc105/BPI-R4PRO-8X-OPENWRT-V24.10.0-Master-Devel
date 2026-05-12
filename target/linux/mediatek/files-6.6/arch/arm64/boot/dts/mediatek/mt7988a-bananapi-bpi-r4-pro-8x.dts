@@ -548,13 +548,15 @@
 			#size-cells = <0>;
 			reg = <3>;
 
-			wifi_eeprom: eeprom@51 {
-				compatible = "atmel,24c02";
-				reg = <0x51>;
-				address-bits = <8>;
-				page-size = <8>;
-				size = <256>;
-			};
+			/*
+			 * Wi-Fi EEPROMs at 0x51 (5G) and 0x52 (6G) are created
+			 * by the wifi-mt7996a overlay, which also exposes the
+			 * macaddr_5g/macaddr_6g nvmem cells consumed by the
+			 * mt7996e PCIe wifi@0,0 nodes. Declaring eeprom@51 here
+			 * collides with the overlay (both register at i2c addr
+			 * 0x51), so leave this bus empty and let the overlay
+			 * own both devices.
+			 */
 		};
 	};
 };
