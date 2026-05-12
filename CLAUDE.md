@@ -174,4 +174,61 @@ Confirmed the official BPI procedure works in practice, with these concrete deta
 - First eMMC boot prints `mount_root: overlay filesystem in /dev/fitrw has not been formatted yet` then automatically `mkfs.f2fs` the rootfs_data area inside the `production` GPT partition. Subsequent boots are quiet.
 - After eMMC boot, root overlay is **f2fs on /dev/fitrw, ~270 MiB** (production 448M minus sysupgrade.itb 178M). Docker started in this state automatically falls back to `Storage Driver: vfs` because Docker's default overlay2 cannot stack on top of the existing rootfs overlayfs. Functional but space-inefficient — fixing it requires creating a separate filesystem from the unallocated 7.4 GiB at the end of eMMC and pointing Docker `data-root` there (or using btrfs).
 
+### Optional feature: Full-Cone NAT (nft-fullcone), added 2026-05-13
+
+Linux's default `MASQUERADE` is symmetric NAT (RFC3489 NAT type 4 / "Strict"). For P2P / game console workloads, full-cone is much friendlier. This fork ships the immortalwrt 24.10 nft-fullcone patch set (commit `0f2bda64` on branch `feat/nft-fullcone`), which is OFF by default — there is a kmod build target but no user-visible behavior change unless explicitly enabled.
+
+**What was added** (see commit message for full detail):
+
+- `package/libs/libnftnl/patches/001-libnftnl-add-fullcone-expression-support.patch`
+- `package/network/utils/nftables/patches/{001-drop-useless-file,002-…-fullcone-…}.patch` — note the `001-drop-useless-file.patch` is a prerequisite that removes `tests/shell/run-tests.sh.rej` shipped (accidentally) inside the nftables 1.1.1 release tarball; without it OpenWrt's quilt wrapper aborts every `prepare`.
+- `package/network/config/firewall4/patches/001-firewall4-add-support-for-fullcone-nat.patch` — adds UCI `option fullcone '1'` and the `zone-fullcone.uc` template.
+- `package/network/utils/fullconenat-nft/` — out-of-tree kmod pulling `github.com/fullcone-nat-nftables/nft-fullcone @ 07d93b62` (the upstream repo is **archived**, last push 2023-05-17 — no fixes coming, the 010 patch in this package is the only kernel-6.6 adapter).
+
+**Version alignment with immortalwrt is exact** (libnftnl 1.2.8, nftables 1.1.1, firewall4 18fc0ead all match commits byte-for-byte). Zero hunk reject. If you bump any of these three components, re-check the patches don't go stale.
+
+**How to enable**:
+
+```sh
+echo CONFIG_PACKAGE_kmod-nft-fullcone=y >> .config
+make defconfig
+make -j$(nproc)
+make target/install V=s -j1   # if -j$(nproc) hits the install race
+# Then on the device:
+uci set firewall.@zone[1].fullcone='1'   # @zone[1] is typically wan, verify with `uci show firewall`
+uci commit firewall
+fw4 reload
+nft list ruleset | grep fullcone         # should now show fullcone statements
+```
+
+**Caveats**:
+
+- **UDP only**. TCP falls back to standard MASQUERADE (still symmetric). Enough to flip game-console NAT-type tests to "Open" / NAT1 (those probe UDP via STUN). TCP-based P2P apps see no improvement.
+- **Interaction with MTK private HNAT — theory says they cooperate, runtime not yet measured.** Source-level analysis of `drivers/net/ethernet/mediatek/mtk_hnat/` (added by `mtk_openwrt_feed` patch 999-2745) shows the HNAT driver is **NAT-type agnostic**:
+  - HNAT itself does NOT allocate ports. In `hnat_nf_hook.c` the FOE entry's `new_sport` is filled with `ntohs(pptr->src)` straight from the skb after netfilter has finished its work — HNAT is a transparent cache for whatever conntrack decided.
+  - Hook priorities give all NAT decisions room to run: `NF_INET_PRE_ROUTING` at `NF_IP_PRI_FIRST + 1` (= -32767, fast-path lookup only — on miss it lets the packet continue through conntrack at -200, DNAT at -100, etc.), and `NF_INET_POST_ROUTING` at `NF_IP_PRI_LAST` (= INT_MAX, fires after SNAT at +100 and the fullcone expression which sits in the same NAT chain).
+  - Therefore the expected behavior after enabling fullcone is: the first egress packet of a new flow traverses the full netfilter stack, `nft_fullcone_*_eval` writes a port-consistent SNAT, then HNAT POST observes the post-fullcone 5-tuple and caches it into the PPE FOE table. Subsequent egress packets get hardware fast-forwarded **while preserving the fullcone port mapping**. For unsolicited inbound, HNAT PRE misses (no FOE entry yet for the reverse direction), the packet falls through to conntrack and the fullcone PREROUTING handler, which looks up the reverse mapping and creates a new conntrack; HNAT POST then caches the reverse flow. **No code-level path makes HNAT bypass or override fullcone's decision.**
+  - The remaining unknowns are unrelated to hook ordering: (a) whether the `/sbin/mtkhnat` userspace daemon's conntrack scanning interacts with fullcone's private `nat_mapping` table, and (b) whether HQoS / sp_tag / vlan handling in the FOE entry layout makes any assumption that breaks for fullcone-mapped reverse flows. Both can only be answered by running real traffic.
+  - **Suggested verification methodology (still two-step, not because cooperation is expected to fail but to make any divergence easy to localize):**
+    ```sh
+    # Step 1: characterize fullcone in isolation on the upstream Linux offload path
+    /etc/init.d/mtkhnat stop && /etc/init.d/mtkhnat disable
+    uci set firewall.@defaults[0].flow_offloading_hw='1'
+    uci commit firewall && /etc/init.d/firewall restart
+    # → run STUN test, NAT-type test, BT/game traffic. Expected: fullcone OK.
+    # Step 2: re-enable mtkhnat and repeat.
+    /etc/init.d/mtkhnat enable && /etc/init.d/mtkhnat start
+    # → repeat tests. Expected (per code analysis): fullcone still OK, throughput jumps to ~10 Gbps line rate.
+    # If step 2 regresses, the divergence isolates to mtkhnat userspace or HQoS behavior, not the kernel hook ordering.
+    ```
+  - Performance trade-off if you do end up choosing Linux offload only: MTK HNAT does ~10 Gbps line-rate, Linux `flow_offloading_hw` does ~2.5–4 Gbps on this hardware.
+- **NAT classification test commands** (run from a LAN client):
+  ```sh
+  # quick "what's my NAT" via STUN
+  stun stun.l.google.com:19302       # apt install stuntman-client; look at "mapped address"
+  ```
+  Run twice; if the mapped public port is identical across runs ⇒ fullcone is working. If it differs ⇒ symmetric (something's wrong).
+
+**Why this is a separate branch, not on `main`**: keeps `main` aligned with the BPI hardware-bring-up story (Wi-Fi 7 fix, Docker enablement) and isolates a Chinese-community-only convenience feature. Merge to main once runtime-verified on hardware.
+
 ### Verified end-to-end build (Ubuntu 22.04 container, 2026-05-12)
