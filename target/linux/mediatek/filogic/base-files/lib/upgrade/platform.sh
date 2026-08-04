@@ -93,6 +93,7 @@ platform_do_upgrade() {
 	abt,asr3000|\
 	bananapi,bpi-r3|\
 	bananapi,bpi-r3-mini|\
+	bananapi,bpi-r4-pro-8x|\
 	bananapi,bpi-r4|\
 	bananapi,bpi-r4-poe|\
 	cmcc,a10-ubootmod|\
@@ -214,6 +215,7 @@ platform_check_image() {
 	mediatek,mt7988a-rfb|\
 	bananapi,bpi-r3|\
 	bananapi,bpi-r3-mini|\
+	bananapi,bpi-r4-pro-8x|\
 	bananapi,bpi-r4|\
 	bananapi,bpi-r4-poe|\
 	cmcc,rax3000m)
@@ -238,6 +240,7 @@ platform_copy_config() {
 	mediatek,mt7988a-rfb|\
 	bananapi,bpi-r3|\
 	bananapi,bpi-r3-mini|\
+	bananapi,bpi-r4-pro-8x|\
 	bananapi,bpi-r4|\
 	bananapi,bpi-r4-poe|\
 	cmcc,rax3000m)
