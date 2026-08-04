@@ -6,6 +6,7 @@
 
 #include <linux/of_device.h>
 #include <net/netfilter/nf_flow_table.h>
+#include <linux/dsa/8021q.h>
 
 #include "hnat.h"
 
@@ -60,8 +61,15 @@ int hnat_dsa_fill_stag(const struct net_device *netdev,
 	if (IS_ERR(dp))
 		return -ENODEV;
 
-	if (IS_DSA_TAG_PROTO_8021Q(dp)) {
-		dsa_tag = port_index + BIT(11);
+	if (IS_DSA_TAG_PROTO_8021Q(dp) || IS_DSA_TAG_PROTO_MXL862_8021Q(dp)) {
+		if (IS_DSA_TAG_PROTO_MXL862_8021Q(dp))
+			/* The MXL862xx switch decodes the egress port from the
+			 * 802.1Q VID, using the same encoding its tagger emits
+			 * on the software path (RSV | switch id | port).
+			 */
+			dsa_tag = dsa_tag_8021q_standalone_vid(dp);
+		else
+			dsa_tag = port_index + BIT(11);
 
 		if (IS_IPV4_GRP(entry)) {
 			/* PPE can only be filled up to 2 VLAN layers,

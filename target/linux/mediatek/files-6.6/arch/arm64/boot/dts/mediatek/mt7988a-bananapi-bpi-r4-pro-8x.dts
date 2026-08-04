@@ -753,3 +753,23 @@
 	status = "okay";
 };
 
+
+/* MediaTek hardware NAT (PPE) — needed for 10G line-rate forwarding.
+ * Same topology as the MT7988 reference board: gmac0 -> internal switch
+ * (lan0/lan3), gmac1 -> 10G WAN, gmac2 -> MXL862xx switch (mxl_lan*).
+ * Requires kmod-mediatek_hnat; with CONFIG_NET_MEDIATEK_HNAT set, mtk_eth_soc
+ * skips its own PPE init/start/stop and the PPE belongs to this driver.
+ */
+&hnat {
+	mtketh-wan = "eth1";
+	mtketh-lan = "lan";
+	/* hnat classifies interfaces by name prefix: the MXL862xx user ports are
+	 * called mxl_lanN, so the lan2 slot must carry that prefix — with "eth2"
+	 * (the DSA conduit) none of them matched IS_LAN_GRP() and the WAN->LAN
+	 * direction was never bound to the PPE (downloads stayed on the CPU).
+	 */
+	mtketh-lan2 = "mxl_lan";
+	mtketh-max-gmac = <3>;
+	mtketh-ppe-num = <3>;
+	status = "okay";
+};
