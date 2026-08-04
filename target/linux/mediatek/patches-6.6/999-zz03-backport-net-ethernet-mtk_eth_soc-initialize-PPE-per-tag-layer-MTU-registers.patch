@@ -1,0 +1,123 @@
+From 71ca90c26eef2ca0bb2b7b8d1f0d1e4e6d0b3b3d Mon Sep 17 00:00:00 2001
+From: Daniel Golle <daniel@makrotopia.org>
+Date: Mon, 27 Apr 2026 00:00:00 +0000
+Subject: net: ethernet: mtk_eth_soc: initialize PPE per-tag-layer MTU registers
+
+[ Upstream commit 2dddb34dd0d07b01fa770eca89480a4da4f13153 ]
+
+The PPE enforces output frame size limits via per-tag-layer VLAN_MTU
+registers that the driver never initializes. The hardware defaults do
+not account for PPPoE overhead, causing the PPE to punt encapsulated
+frames back to the CPU instead of forwarding them.
+
+Initialize the registers at PPE start and on MTU changes using the
+maximum GMAC MTU. This is a conservative approximation -- the actual
+per-PPE requirement depends on egress path, but using the global
+maximum ensures the limits are never too small.
+
+Fixes: ba37b7caf1ed ("net: ethernet: mtk_eth_soc: add support for initializing the PPE")
+Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+Backported to this tree by hand: mtk_open()/mtk_change_mtu() differ from
+upstream here (multi-PPE, per-mac gdm_config), and MTK_PPE_VLAN_MTU0/1 are
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -1265,6 +1265,32 @@
+ 	}
+ }
+ 
++void mtk_ppe_update_mtu(struct mtk_ppe *ppe, int mtu)
++{
++	int base;
++	u32 val;
++
++	if (!ppe)
++		return;
++
++	/* The PPE checks output frame size against per-tag-layer MTU limits,
++	 * treating PPPoE and DSA tags just like 802.1Q VLAN tags. The Linux
++	 * device MTU already accounts for PPPoE and DSA tag overhead, but
++	 * 802.1Q VLAN tags are handled transparently without being reflected
++	 * by the lower device MTU. Use the maximum MTU across all GMAC
++	 * interfaces so that PPE output frame limits are never too small.
++	 */
++	base = ETH_HLEN + mtu;
++
++	val = FIELD_PREP(MTK_PPE_VLAN_MTU0_NONE, base) |
++	      FIELD_PREP(MTK_PPE_VLAN_MTU0_1TAG, base + VLAN_HLEN);
++	ppe_w32(ppe, MTK_PPE_VLAN_MTU0, val);
++
++	val = FIELD_PREP(MTK_PPE_VLAN_MTU1_2TAG, base + 2 * VLAN_HLEN) |
++	      FIELD_PREP(MTK_PPE_VLAN_MTU1_3TAG, base + 3 * VLAN_HLEN);
++	ppe_w32(ppe, MTK_PPE_VLAN_MTU1, val);
++}
++
+ void mtk_ppe_start(struct mtk_ppe *ppe)
+ {
+ 	u32 val;
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.h
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.h
+@@ -351,6 +351,7 @@
+ struct mtk_ppe *mtk_ppe_init(struct mtk_eth *eth, void __iomem *base, int index);
+ 
+ void mtk_ppe_deinit(struct mtk_eth *eth);
++void mtk_ppe_update_mtu(struct mtk_ppe *ppe, int mtu);
+ int mtk_ppe_roaming_start(struct mtk_eth *eth);
+ int mtk_ppe_roaming_stop(struct mtk_eth *eth);
+ void mtk_ppe_start(struct mtk_ppe *ppe);
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -4260,12 +4260,23 @@
+ 	return NOTIFY_DONE;
+ }
+ 
++static int mtk_max_gmac_mtu(struct mtk_eth *eth)
++{
++	int i, max_mtu = ETH_DATA_LEN;
++
++	for (i = 0; i < ARRAY_SIZE(eth->netdev); i++)
++		if (eth->netdev[i] && eth->netdev[i]->mtu > max_mtu)
++			max_mtu = eth->netdev[i]->mtu;
++
++	return max_mtu;
++}
++
+ static int mtk_open(struct net_device *dev)
+ {
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	struct mtk_eth *eth = mac->hw;
+ 	struct mtk_mac *target_mac;
+-	int i, err, ppe_num;
++	int i, err, ppe_num, mtu;
+ 
+ 	ppe_num = eth->soc->ppe_num;
+ 
+@@ -4322,6 +4333,10 @@
+ 		mtk_w32(eth, RST_GL_PSE, MTK_RST_GL);
+ 		mtk_w32(eth, 0, MTK_RST_GL);
+ 
++		mtu = mtk_max_gmac_mtu(eth);
++		for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
++			mtk_ppe_update_mtu(eth->ppe[i], mtu);
++
+ 		napi_enable(&eth->tx_napi);
+ 		napi_enable(&eth->rx_napi[0].napi);
+ 		mtk_tx_irq_enable(eth, MTK_TX_DONE_INT);
+@@ -5321,6 +5336,7 @@
+ 	int length = new_mtu + MTK_RX_ETH_HLEN;
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	struct mtk_eth *eth = mac->hw;
++	int i;
+ 
+ 	if (rcu_access_pointer(eth->prog) &&
+ 	    length > MTK_PP_MAX_BUF_SIZE) {
+@@ -5331,6 +5347,9 @@
+ 	mtk_set_mcr_max_rx(mac, length);
+ 	dev->mtu = new_mtu;
+ 
++	for (i = 0; i < ARRAY_SIZE(eth->ppe); i++)
++		mtk_ppe_update_mtu(eth->ppe[i], mtk_max_gmac_mtu(eth));
++
+ 	return 0;
+ }
+ 
