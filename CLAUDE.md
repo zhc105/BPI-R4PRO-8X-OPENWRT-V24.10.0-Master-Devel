@@ -46,6 +46,14 @@ podman run --rm -it \
 
 Do not build as root inside the container — the OpenWrt Makefile refuses to run as uid 0. Create an unprivileged user, or pass `FORCE_UNSAFE_CONFIGURE=1` only when you know what you're doing.
 
+**Working invocation on this host (rootless podman, verified 2026-08-04)**:
+
+```sh
+podman run --rm --userns=keep-id -v "$PWD":/src:Z -w /src owrt-build:22.04 bash -c 'make -j$(nproc)'
+```
+
+`owrt-build:22.04` is ubuntu:22.04 with the deps above **plus `python3-setuptools` and `swig`** (u-boot's prereq check fails without them — the list above is incomplete). `--userns=keep-id` is required, otherwise the container's uid 1000 cannot write this uid-1000 tree and the build dies in `prepare-tmpinfo`. Always `cd` to the repo root first: a stale absolute `cd` makes `-v "$PWD":/src` mount the wrong directory and the build silently no-ops. After a `.config` change run `make target/linux/clean` first; after touching `target/linux/*/base-files/` run `make package/base-files/clean`.
+
 ## Build & Common Commands
 
 ```sh
@@ -115,6 +123,23 @@ Kernel source comes from upstream; this tree carries it as patches in `target/li
 - Don't `git add` `build_dir/`, `staging_dir/`, `tmp/`, `bin/`. `dl/` and `feeds/` ARE tracked in this repo (vendored) — do not delete or `feeds update` them. `.config` is also typically not committed; commit `diffconfig.sh` output instead if a config change is intended.
 - Package and image Makefiles are **OpenWrt-style** — they `include $(INCLUDE_DIR)/package.mk` / `image.mk` and use `define Package/...` / `define Build/...` / `define Device/...` blocks, not plain GNU make rules. Follow patterns in nearby packages rather than inventing structure.
 - Custom feeds are pinned by commit in `feeds.conf.default` (note the `^<sha>` syntax). When updating, change the pinned commit, don't leave a feed floating.
+
+## Field Notes (read these BEFORE re-investigating anything)
+
+Two large working documents live in the repo root. They are **excluded from git via `.git/info/exclude`**, so they exist only on this machine and never appear in a fresh clone — but they are the authoritative record of everything done on the running hardware:
+
+- **`RUNTIME-CHANGES.md`** (~79 KB) — every persistent change made to the live BPI-R4-Pro-8X: eMMC repartition, Docker on btrfs, dropbear/firewall hardening, Wi-Fi channel fixes, the `/sbin/smp-mt76.sh` patch (§10l), and the full PPE/flowtable NAT bug investigation (§10c/§10m) with pcap evidence. It also lists which files are persistently modified outside of packages — read it before any sysupgrade, or those changes get silently reverted.
+- **`WIFI-DEBUG-NOTES.md`** — Wi-Fi 7 / mt7996 debugging record.
+
+**Flashing**: `sysupgrade` did not work on this board until 2026-08-04 — `bananapi,bpi-r4-pro-8x` was missing from `target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh`, so stage2 fell through to `nand_do_upgrade` and tried to write the SPI-NAND UBI on an eMMC-booted box (`-28 ENOSPC`, silent reboot into the old firmware). The board is now listed in all three case blocks there. Full procedure, failure diagnosis via `/sys/fs/pstore/console-ramoops-0`, and the "did the flash actually happen" checks are in `RUNTIME-CHANGES.md` §11. Never flash `emmc.img.gz`/`sdcard.img.gz` on this box — they rewrite the GPT and destroy the btrfs data partition (`/dev/mmcblk0p6`); `sysupgrade` only touches `production` (`/dev/mmcblk0p5`).
+
+Anything learned on the hardware should be appended to `RUNTIME-CHANGES.md`, not just left in a chat session — session transcripts are auto-deleted after 30 days.
+
+## Hardware NAT (mtkhnat) — the 10G path
+
+Enabled 2026-08-04. `CONFIG_PACKAGE_kmod-mediatek_hnat=y` (needs `CONFIG_MEDIATEK_NETSYS_V3=y` in `filogic/config-6.6`) plus `&hnat { … status = "okay"; }` in the board DTS. Two driver assumptions had to be patched before the WAN→LAN direction would accelerate: hnat classifies netdevs by **name prefix** (so `mtketh-lan2` must be `"mxl_lan"`, the MXL user-port prefix — not the conduit `eth2`), and `hnat_dsa_fill_stag()` only knew `DSA_TAG_PROTO_8021Q` while this board's switch is `DSA_TAG_PROTO_MXL862_8021Q`. Result: download 6 Gbps at 100 % CPU → **9.2 Gbps at ~0 % CPU**. Full analysis in `RUNTIME-CHANGES.md` §12.
+
+The module is **not autoloaded**; the image ships `hnat-on`, `hnat-off`, `hnat-status`, `hnat-persist`. Note that building HNAT compiles `mtk_ppe_init/start/stop` out of `mtk_eth_soc.c`, so the mainline nft *hardware* flowtable path is gone in such an image; the software flowtable is unaffected but is known-broken here (see `RUNTIME-CHANGES.md` §10m/§13d) and should stay off.
 
 ## Known Issues / Caveats
 
