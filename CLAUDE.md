@@ -58,11 +58,26 @@ podman run --rm --userns=keep-id -v "$PWD":/src:Z -w /src owrt-build:22.04 bash 
 
 ```sh
 # One-time / after pulling: install feed symlinks into package/feeds/
-# IMPORTANT: do NOT run `./scripts/feeds update -a` in this repo. All feeds
-# (base, luci, packages, routing, telephony, mtk_openwrt_feed, kenzo, small)
-# are vendored under feeds/ at known-good revisions, and mtk_openwrt_feed
-# carries MediaTek's autobuild scripts/patches that an `update` would clobber.
+# IMPORTANT: do NOT run `./scripts/feeds update -a` in this repo. Reasons,
+# verified 2026-08-04:
+#   * feeds/* are NOT git checkouts — they are plain directories tracked by this
+#     repo (374 MB). An update re-clones into them and produces a huge diff
+#     against the committed state.
+#   * 3 of the 7 feeds are NOT pinned: telephony follows branch openwrt-24.10,
+#     and kenzo + small (kenzok8/*) follow HEAD. An update pulls whatever is
+#     latest that day — those two third-party collections change constantly.
+#   * mtk_openwrt_feed carries MediaTek's autobuild patches already applied in
+#     place; an update clobbers them.
+#   * Local fixes live inside feeds/ too — e.g. the smp-mt76.sh workaround in
+#     feeds/mtk_openwrt_feed/feed/app/smp_util/files/. An update deletes them.
 # Only run `install` to (re)create package/feeds/<feed>/<pkg> symlinks.
+#
+# To pick up a fix from a newer MediaTek feed WITHOUT updating: sparse-clone it
+# elsewhere and port the specific hunks by hand, which is how the BIT(DEV_PATH_*)
+# and MTK_FE_GLO_CFG fixes were taken from feed HEAD 95ccd09:
+#   git clone --depth 1 --sparse https://git01.mediatek.com/openwrt/feeds/mtk-openwrt-feeds /tmp/mtkfeed
+#   git -C /tmp/mtkfeed sparse-checkout set autobuild/unified/filogic/24.10/files/target/linux/mediatek/patches-6.6
+#   # then diff the individual patch files against target/linux/mediatek/patches-6.6/
 ./scripts/feeds install -a
 
 # Configure target / packages
