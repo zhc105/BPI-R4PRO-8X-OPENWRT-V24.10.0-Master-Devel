@@ -1,0 +1,38 @@
+#!/bin/sh /etc/rc.common
+# Fallback to mount the btrfs data partition if S11fstab (block-mount) failed.
+# Root cause not fully nailed down — suspected interaction between
+# check_fs=1 and btrfs in /sbin/block mount, but not 100% verified.
+#
+# The filesystem is located by LABEL rather than by UUID so this works on any
+# board flashed with the same layout (create it with `mkfs.btrfs -L data`).
+# If no filesystem carries the label, the script does nothing.
+
+START=12
+USE_PROCD=0
+LABEL=data
+TARGET=/opt/data
+
+boot() {
+    local dev
+
+    if mountpoint -q "$TARGET"; then
+        logger -t mount-data-fallback "OK: $TARGET already mounted by block-mount"
+        exit 0
+    fi
+
+    dev=$(blkid -L "$LABEL" 2>/dev/null)
+    [ -n "$dev" ] || dev=$(readlink -f "/dev/disk/by-label/$LABEL" 2>/dev/null)
+    if [ -z "$dev" ] || [ ! -b "$dev" ]; then
+        logger -t mount-data-fallback "no filesystem labelled '$LABEL' — nothing to do"
+        exit 0
+    fi
+
+    mkdir -p "$TARGET"
+    if mount "$dev" "$TARGET" 2>/dev/null; then
+        logger -t mount-data-fallback "FALLBACK FIRED: had to mount $dev ($LABEL) at $TARGET (block-mount apparently failed)"
+    else
+        logger -t mount-data-fallback "FAILED: could not mount $dev at $TARGET — Docker data root will be on rootfs!"
+    fi
+}
+
+start() { boot; }

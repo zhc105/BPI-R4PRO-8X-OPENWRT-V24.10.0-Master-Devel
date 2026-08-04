@@ -1,0 +1,8 @@
+#!/bin/sh
+# Disable hardware TC offload on ALL interfaces (eth + DSA user ports)
+# Reason: MT7988A PPE flow-offload bug corrupts reverse-direction NAT
+#         for long-lived TCP flows (SSH session hangs after PTY alloc)
+[ "$ACTION" = "ifup" ] || exit 0
+for i in eth0 eth1 eth2 lan0 lan3 mxl_lan0 mxl_lan1 mxl_lan2 mxl_lan3 mxl_lan5; do
+    ethtool -K "$i" hw-tc-offload off 2>/dev/null
+done

@@ -1,0 +1,6 @@
+#!/bin/sh
+# 让 hnat 开机自动启用（确认稳定后再执行）
+echo mtkhnat > /etc/modules.d/50-mtkhnat
+/etc/init.d/mtkhnat enable
+echo "✓ 已设为开机自启"
+echo "  取消: rm /etc/modules.d/50-mtkhnat && /etc/init.d/mtkhnat disable"

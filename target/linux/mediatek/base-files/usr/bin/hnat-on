@@ -1,0 +1,20 @@
+#!/bin/sh
+# 启用 MediaTek 硬件 NAT (PPE)。关闭用 hnat-off，开机自启用 hnat-persist。
+[ -d /sys/kernel/debug/hnat ] && { echo "hnat 已在运行"; exit 0; }
+echo "→ 加载 mtkhnat 模块"
+modprobe mtkhnat 2>&1 || { echo "模块加载失败"; exit 1; }
+sleep 2
+if [ ! -d /sys/kernel/debug/hnat ]; then
+	echo "✗ 驱动未 probe，检查设备树节点与 dmesg："
+	dmesg | grep -iE "hnat|ppe" | tail -5
+	rmmod mtkhnat 2>/dev/null
+	exit 1
+fi
+echo "→ 启动 mtkhnat 服务"
+/etc/init.d/mtkhnat start
+sleep 1
+echo "=== 状态 ==="
+printf "  模块: %s\n" "$(lsmod | grep mtkhnat)"
+printf "  debugfs: %s\n" "$(ls /sys/kernel/debug/hnat/ | tr '\n' ' ')"
+dmesg | grep -iE "hnat" | tail -6 | sed 's/^/  /'
+echo "提示: hnat-status 看加速表, hnat-off 关闭"

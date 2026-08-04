@@ -114,7 +114,11 @@ MT7988()
 	if [[ "$WED_ENABLE" -eq "1" ]]; then
 		if [[ "$NFT_ENABLE" -eq "1" ]]; then
 			dbg2 "WED_ENABLE ON irq/nftables setting"
-			nftables_flowoffload_enable
+			: # disabled: this recreates /etc/flowtable.conf and turns
+			# on nftables flow offload behind the operator's back, which
+			# corrupts reverse-direction NAT for long-lived TCP on this SoC
+			nft delete table inet filter 2>/dev/null
+			rm -f /etc/flowtable.conf
 		else
 			dbg2 "WED_ENABLE ON irq/iptable setting"
 			iptables_flowoffload_enable
@@ -145,10 +149,10 @@ MT7988()
 		CPU3_RPS=""
 	else
 		#we bound all wifi card to cpu0 and bound eth to cpu
-		CPU0_AFFINITY=""
-		CPU1_AFFINITY=""
-		CPU2_AFFINITY="$eth_irq_rx0 $eth_irq_rx1 $eth_irq_tx"
-		CPU3_AFFINITY="$eth_irq_rx2 $eth_irq_rx3"
+		CPU0_AFFINITY="$eth_irq_rx0"
+		CPU1_AFFINITY="$eth_irq_rx1 $eth_irq_tx"
+		CPU2_AFFINITY="$eth_irq_rx2"
+		CPU3_AFFINITY="$eth_irq_rx3"
 
 		CPU0_RPS="$WIFI_IF_LIST"
 		CPU1_RPS="$WIFI_IF_LIST"
@@ -180,7 +184,11 @@ MT7986()
 	if [[ "$WED_ENABLE" -eq "1" ]]; then
 		if [[ "$NFT_ENABLE" -eq "1" ]]; then
 			dbg2 "WED_ENABLE ON irq/nftables setting"
-			nftables_flowoffload_enable
+			: # disabled: this recreates /etc/flowtable.conf and turns
+			# on nftables flow offload behind the operator's back, which
+			# corrupts reverse-direction NAT for long-lived TCP on this SoC
+			nft delete table inet filter 2>/dev/null
+			rm -f /etc/flowtable.conf
 		else
 			dbg2 "WED_ENABLE ON irq/iptables setting"
 			iptables_flowoffload_enable
@@ -268,7 +276,11 @@ MT7981()
 	if [[ "$WED_ENABLE" -eq "1" ]]; then
 		if [[ "$NFT_ENABLE" -eq "1" ]]; then
 			dbg2 "WED_ENABLE ON irq/nftables setting"
-			nftables_flowoffload_enable
+			: # disabled: this recreates /etc/flowtable.conf and turns
+			# on nftables flow offload behind the operator's back, which
+			# corrupts reverse-direction NAT for long-lived TCP on this SoC
+			nft delete table inet filter 2>/dev/null
+			rm -f /etc/flowtable.conf
 		else
 			dbg2 "WED_ENABLE ON irq/iptable setting"
 			iptables_flowoffload_enable

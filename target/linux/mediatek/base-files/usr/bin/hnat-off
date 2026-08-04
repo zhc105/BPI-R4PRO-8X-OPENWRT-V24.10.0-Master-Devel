@@ -1,0 +1,10 @@
+#!/bin/sh
+# 关闭 MediaTek 硬件 NAT，恢复纯软件转发。
+/etc/init.d/mtkhnat stop 2>/dev/null
+sleep 1
+rmmod mtkhnat 2>/dev/null
+if lsmod | grep -q mtkhnat; then
+	echo "✗ 模块仍在占用: $(lsmod | grep mtkhnat)"
+	exit 1
+fi
+echo "✓ hnat 已关闭（模块已卸载，PPE 释放）"

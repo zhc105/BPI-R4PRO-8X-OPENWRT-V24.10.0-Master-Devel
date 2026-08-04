@@ -1,0 +1,18 @@
+#!/bin/sh
+# 查看硬件 NAT 状态与加速表
+if [ ! -d /sys/kernel/debug/hnat ]; then
+	echo "hnat 未运行（用 hnat-on 启用）"; exit 1
+fi
+echo "=== 模块 ==="; lsmod | grep mtkhnat
+echo "=== 加速表条目统计 ==="
+for f in /sys/kernel/debug/hnat/hnat_entry /sys/kernel/debug/hnat/*entries*; do
+	[ -f "$f" ] || continue
+	printf "  %s: BIND=%s UNBIND=%s\n" "$(basename $f)" \
+	    "$(grep -c BIND "$f" 2>/dev/null)" "$(grep -c UNBIND "$f" 2>/dev/null)"
+done
+echo "=== 可用调试节点 ==="; ls /sys/kernel/debug/hnat/ | tr '\n' ' '; echo
+echo "=== 各核软中断占比(2秒采样) ==="
+A=$(grep -E "^cpu[0-9]" /proc/stat); sleep 2; B=$(grep -E "^cpu[0-9]" /proc/stat)
+echo "$A" > /tmp/.cpuA; echo "$B" > /tmp/.cpuB
+awk 'NR==FNR{a[FNR]=$0;next}{split(a[FNR],p);split($0,c);t=0;for(i=2;i<=8;i++)t+=c[i]-p[i];s=c[8]-p[8];printf "  %s softirq %.1f%%\n",c[1],(t?100*s/t:0)}' /tmp/.cpuA /tmp/.cpuB
+rm -f /tmp/.cpuA /tmp/.cpuB

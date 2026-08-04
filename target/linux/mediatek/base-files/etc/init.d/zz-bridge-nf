@@ -1,0 +1,15 @@
+#!/bin/sh /etc/rc.common
+# Re-assert bridge-nf-call-*=0 after dockerd (S99) start: docker libnetwork
+# force-enables them at bridge network init, which combined with
+# flow_offloading makes nf_nat_oif_changed() kill established NAT conntracks.
+# See repo memory ppe-swoffload-nat-broken (root-caused 2026-08-04).
+START=99
+start() {
+    (
+        for i in $(seq 1 36); do
+            sysctl -qw net.bridge.bridge-nf-call-iptables=0 \
+                       net.bridge.bridge-nf-call-ip6tables=0 2>/dev/null
+            sleep 5
+        done
+    ) &
+}
